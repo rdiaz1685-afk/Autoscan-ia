@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  
   return {
     plugins: [react()],
     define: {
@@ -10,7 +11,18 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: false
+      sourcemap: false,
+      rollupOptions: {
+        external: ['fsevents'], // Evita que Rollup intente resolver este módulo de macOS
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'react-router-dom', '@google/genai'],
+          },
+        },
+      },
+    },
+    optimizeDeps: {
+      exclude: ['fsevents']
     }
   };
 });
