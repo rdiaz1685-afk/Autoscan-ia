@@ -2,22 +2,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Message } from "../types";
 
-/**
- * Obtiene la API_KEY inyectada por Vite.
- */
-const getApiKey = () => {
-  return process.env.API_KEY || "";
-};
+const getApiKey = () => process.env.API_KEY || "";
 
 export const analyzeVIN = async (imageBase64: string, mimeType: string = "image/jpeg") => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API_KEY_MISSING");
+
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [
       {
         parts: [
           { inlineData: { data: imageBase64, mimeType: mimeType } },
-          { text: "Extrae el VIN, Marca, Modelo, Año y Color de esta imagen vehicular. Responde únicamente en JSON." }
+          { text: "Analiza esta imagen de un vehículo o su placa de identificación. Extrae: VIN, Marca, Modelo, Año. Responde en JSON puro." }
         ]
       }
     ],
@@ -26,24 +24,26 @@ export const analyzeVIN = async (imageBase64: string, mimeType: string = "image/
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          vin: { type: Type.STRING },
-          make: { type: Type.STRING },
-          model: { type: Type.STRING },
-          year: { type: Type.NUMBER },
-          color: { type: Type.STRING }
+          vin: { type: Type.STRING, description: "Número de identificación vehicular" },
+          make: { type: Type.STRING, description: "Marca del auto" },
+          model: { type: Type.STRING, description: "Submarca o modelo" },
+          year: { type: Type.NUMBER, description: "Año de fabricación" },
+          color: { type: Type.STRING, description: "Color predominante" }
         },
-        required: ["vin", "make", "model", "year"]
+        required: ["make", "model"] // Solo pedimos Marca y Modelo como obligatorios para mayor flexibilidad
       }
     }
   });
-  return JSON.parse(response.text || "{}");
+  
+  if (!response.text) throw new Error("EMPTY_RESPONSE");
+  return JSON.parse(response.text);
 };
 
 export const getVehicleSpecs = async (make: string, model: string, year: number) => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Genera una ficha técnica técnica para un ${year} ${make} ${model} en formato JSON.`,
+    contents: `Ficha técnica para ${year} ${make} ${model} en JSON.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -67,7 +67,7 @@ export const generateFinalReport = async (data: any) => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
-    contents: `Genera un reporte pericial detallado en Markdown basado en: ${JSON.stringify(data)}`,
+    contents: `Genera reporte pericial en Markdown: ${JSON.stringify(data)}`,
     config: { thinkingConfig: { thinkingBudget: 4000 } }
   });
   return response.text;
@@ -82,7 +82,7 @@ export const chatInspector = async (history: Message[], userInput: string, vehic
       { role: "user", parts: [{ text: userInput }] }
     ],
     config: {
-      systemInstruction: `Eres AutoScan AI. Estás inspeccionando un ${vehicleInfo?.year} ${vehicleInfo?.make}. Proporciona guía técnica.`
+      systemInstruction: `Asistente técnico para ${vehicleInfo?.make}.`
     }
   });
   return response.text;
@@ -92,7 +92,7 @@ export const analyzeOBDCodes = async (codes: string[]) => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Analiza códigos OBD-II: ${codes.join(", ")}. Responde en JSON.`,
+    contents: `Analiza códigos OBD: ${codes.join(", ")}. JSON.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {

@@ -23,32 +23,37 @@ const VinScanPage: React.FC = () => {
       try {
         const base64 = (reader.result as string).split(',')[1];
         setLoadingStep("CONECTANDO CON IA...");
+        
         const result = await analyzeVIN(base64, mimeType);
         
-        if (!result || !result.make) throw new Error("LOW_CONFIDENCE");
+        if (!result || !result.make) {
+          throw new Error("No se pudo identificar la marca del vehículo en la imagen.");
+        }
 
-        setLoadingStep(`VEHÍCULO: ${result.make}`);
+        setLoadingStep(`VEHÍCULO DETECTADO: ${result.make}`);
         const specs = await getVehicleSpecs(result.make, result.model || "Modelo", result.year || 2024);
         
         setState(prev => ({
           ...prev,
-          vin: result.vin || "EXTRACTED-VIN",
+          vin: result.vin || "VIN-NO-DETECTADO",
           vehicleInfo: { 
             make: result.make, 
             model: result.model || "Desconocido", 
             year: result.year || 2024, 
-            color: result.color || "Detectado" 
+            color: result.color || "N/A" 
           },
           vehicleSpecs: specs
         }));
       } catch (err: any) {
-        console.error("Scan Error:", err);
-        alert("Error de lectura. Por favor, asegúrate de que el VIN sea legible o ingresa los datos manualmente.");
+        console.error("Scan Error Details:", err);
+        const errorMsg = err.message || "Error desconocido";
+        alert(`Error en Escaneo: ${errorMsg}\n\nIntenta con una foto más clara o ingresa los datos manualmente.`);
       } finally {
         setLoading(false);
         setLoadingStep("");
       }
     };
+    reader.onerror = () => alert("Error al leer el archivo de imagen.");
     reader.readAsDataURL(file);
   };
 
@@ -74,7 +79,7 @@ const VinScanPage: React.FC = () => {
         vehicleSpecs: specs
       }));
     } catch (e) {
-      alert("Error al cargar especificaciones.");
+      alert("Error al cargar especificaciones manuales.");
     } finally {
       setLoading(false);
     }
@@ -101,19 +106,19 @@ const VinScanPage: React.FC = () => {
                 {!loading ? (
                   <>
                     <span className="material-symbols-outlined text-7xl text-white/10">qr_code_scanner</span>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase text-center px-4">Escanear VIN o Tarjeta</p>
+                    <p className="text-[9px] font-bold text-slate-500 uppercase text-center px-4">Escanear VIN o Placa</p>
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-4">
                     <div className="size-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-[10px] font-black text-primary animate-pulse">{loadingStep}</p>
+                    <p className="text-[10px] font-black text-primary animate-pulse text-center px-4">{loadingStep}</p>
                   </div>
                 )}
               </div>
 
               <div className="text-center">
                 <h2 className="text-3xl font-black mb-2 tracking-tighter">Escaneo Visual AI</h2>
-                <p className="text-sm text-slate-400">Decodifica la historia y especificaciones de cualquier vehículo mediante visión artificial.</p>
+                <p className="text-sm text-slate-400">Captura el VIN en el tablero o la tarjeta de circulación.</p>
               </div>
 
               <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={onFileChange} />
@@ -153,7 +158,7 @@ const VinScanPage: React.FC = () => {
               <span className="material-symbols-outlined text-primary text-6xl mb-4">verified</span>
               <h3 className="text-3xl font-black mb-1">{state.vehicleInfo?.make}</h3>
               <p className="text-slate-400 font-bold mb-6">{state.vehicleInfo?.model} {state.vehicleInfo?.year}</p>
-              <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] tracking-widest">{state.vin}</div>
+              <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] tracking-widest uppercase">{state.vin}</div>
            </div>
            <button onClick={() => navigate('/visual-inspection')} className="w-full bg-primary py-5 rounded-2xl font-black flex items-center justify-center gap-2">
              SIGUIENTE PASO <span className="material-symbols-outlined">arrow_forward</span>
