@@ -1,0 +1,7 @@
+{
+  "name": "AutoScan AI",
+  "description": "An AI-powered vehicle evaluation platform that provides real-time diagnostic analysis, visual inspection reports, and market valuation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
