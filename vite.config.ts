@@ -2,16 +2,16 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Carga las variables de entorno del archivo .env
+  // Carga variables de .env local y del sistema (Vercel)
   const env = loadEnv(mode, process.cwd(), '');
   
+  // Determinamos la API_KEY buscando en todas las fuentes posibles
+  const apiKey = env.API_KEY || process.env.API_KEY || '';
+
   return {
     plugins: [react()],
     define: {
-      'process.env': {
-        // Prioriza la llave del archivo .env, luego la de la terminal, o vacío
-        API_KEY: JSON.stringify(env.API_KEY || process.env.API_KEY || '')
-      }
+      'process.env.API_KEY': JSON.stringify(apiKey)
     }
   };
 });
