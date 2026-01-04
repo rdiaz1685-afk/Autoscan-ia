@@ -28,9 +28,17 @@ const GuidedInspectionPage: React.FC = () => {
 
     try {
       const legalContext = `El usuario está preguntando sobre la legalidad: Facturas, Refrendos y Tenencias. Explica cómo la factura original vs aseguradora cambia el valor.`;
-      const aiResponseText = await chatInspector(newChat, textToSend, { ...state.vehicleInfo, context: legalContext });
+      const aiResponseText = await chatInspector(newChat, textToSend, { 
+        make: state.vehicleInfo?.make || "Vehículo", 
+        model: state.vehicleInfo?.model || "Desconocido",
+        context: legalContext 
+      });
       
-      const aiMessage = { role: 'model' as const, text: aiResponseText || "Entendido. ¿Tienes los comprobantes de los últimos 5 años de tenencia?", timestamp: Date.now() };
+      const aiMessage = { 
+        role: 'model' as const, 
+        text: aiResponseText || "Entendido. ¿Tienes los comprobantes de los últimos 5 años de tenencia?", 
+        timestamp: Date.now() 
+      };
       setState(prev => ({ ...prev, inspectionChat: [...prev.inspectionChat, aiMessage] }));
     } catch (err) {
       console.error(err);
@@ -48,17 +56,17 @@ const GuidedInspectionPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen flex-col bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-sans">
-      <header className="p-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 bg-surface-light dark:bg-surface-dark z-50">
+    <div className="flex h-screen flex-col bg-background-light dark:bg-[#101922] text-slate-900 dark:text-white font-sans">
+      <header className="p-4 pt-12 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 bg-surface-light dark:bg-background-dark z-50">
         <button 
           onClick={() => navigate('/visual-inspection')} 
-          className="size-11 flex items-center justify-center bg-slate-100 dark:bg-background-dark rounded-xl active:scale-90 transition-transform border border-slate-200 dark:border-white/10"
+          className="size-11 flex items-center justify-center bg-slate-100 dark:bg-white/5 rounded-xl active:scale-90 transition-transform border border-slate-200 dark:border-white/10"
         >
           <span className="material-symbols-outlined text-primary">arrow_back</span>
         </button>
         <div className="text-center">
           <h1 className="text-xs font-black uppercase tracking-widest text-primary">Validación Legal y Física</h1>
-          <p className="text-[9px] opacity-50 uppercase font-bold">{state.vehicleInfo?.make} {state.vehicleInfo?.model}</p>
+          <p className="text-[9px] opacity-50 uppercase font-bold">{state.vehicleInfo?.make || 'Auto'} {state.vehicleInfo?.model || ''}</p>
         </div>
         <button onClick={() => navigate('/obd-connect')} className="px-4 py-2 bg-primary text-white text-[10px] font-black rounded-xl shadow-lg shadow-primary/20">
           LISTO
@@ -113,8 +121,8 @@ const GuidedInspectionPage: React.FC = () => {
           <input 
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Pregunta sobre trámites o reporta daños..." 
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Menciona trámites o reporta daños..." 
             className="flex-1 bg-gray-100 dark:bg-background-dark border-none rounded-2xl px-5 py-4 text-sm focus:ring-2 focus:ring-primary outline-none shadow-inner"
           />
           <button onClick={() => handleSend()} className="size-14 bg-primary text-white rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 transition-transform active:scale-90">

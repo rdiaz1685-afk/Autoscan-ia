@@ -7,9 +7,10 @@ const VisualInspectionPage: React.FC = () => {
   const navigate = useNavigate();
   const { state, setState } = useApp();
   
-  // Obtenemos el paso actual del estado global para persistencia
+  // Obtenemos el paso actual del estado global
   const currentStep = state.currentPhotoStep || 0;
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const photosNeeded = [
@@ -21,7 +22,7 @@ const VisualInspectionPage: React.FC = () => {
     "Tablero / Odómetro"
   ];
 
-  // Si ya se completaron todas las fotos, navegar a la siguiente fase
+  // Seguridad: si por alguna razón el paso es mayor al necesario, salir
   useEffect(() => {
     if (currentStep >= photosNeeded.length) {
       navigate('/guided-inspection');
@@ -42,15 +43,37 @@ const VisualInspectionPage: React.FC = () => {
   const confirmPhoto = () => {
     if (!previewUrl) return;
 
-    // Guardamos la foto y avanzamos el contador de pasos global
+    const nextStep = currentStep + 1;
+
+    // Actualizamos estado
     setState(prev => ({
       ...prev,
       exteriorPhotos: [...(prev.exteriorPhotos || []), previewUrl],
-      currentPhotoStep: (prev.currentPhotoStep || 0) + 1
+      currentPhotoStep: nextStep
     }));
 
     setPreviewUrl(null);
+
+    // Si era la última foto, navegamos inmediatamente
+    if (nextStep >= photosNeeded.length) {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        navigate('/guided-inspection');
+      }, 300);
+    }
   };
+
+  // Si estamos navegando o fuera de rango, mostrar cargando para evitar pantalla negra/crash
+  if (isTransitioning || currentStep >= photosNeeded.length) {
+    return (
+      <div className="h-screen bg-[#101922] flex flex-col items-center justify-center text-white">
+        <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Procesando Inspección...</p>
+      </div>
+    );
+  }
+
+  const currentLabel = photosNeeded[currentStep] || "Captura Final";
 
   return (
     <div className="relative h-screen bg-black text-white flex flex-col overflow-hidden">
@@ -83,7 +106,7 @@ const VisualInspectionPage: React.FC = () => {
         </button>
         <div className="text-center">
           <p className="text-[10px] uppercase font-black text-primary tracking-widest mb-1">Paso {currentStep + 1} de {photosNeeded.length}</p>
-          <h2 className="text-lg font-black tracking-tight">{photosNeeded[currentStep]}</h2>
+          <h2 className="text-lg font-black tracking-tight">{currentLabel}</h2>
         </div>
         <div className="w-11"></div>
       </header>
@@ -97,7 +120,7 @@ const VisualInspectionPage: React.FC = () => {
               ))}
             </div>
             <p className="text-sm text-slate-400 text-center max-w-[250px]">
-              Toma una foto del <span className="text-white font-bold">{photosNeeded[currentStep].toLowerCase()}</span>.
+              Toma una foto del <span className="text-white font-bold">{currentLabel.toLowerCase()}</span>.
             </p>
             <button 
               onClick={() => fileInputRef.current?.click()} 
