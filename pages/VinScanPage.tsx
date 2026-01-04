@@ -18,21 +18,21 @@ const VinScanPage: React.FC = () => {
     if (!file) return;
     
     setLoading(true);
-    setLoadingStep("INICIANDO SENSORES...");
+    setLoadingStep("ACTIVANDO ESCÁNER...");
     
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(',')[1];
       try {
-        setLoadingStep("ANALIZANDO VIN...");
+        setLoadingStep("PROCESANDO IMAGEN...");
         const result = await analyzeVIN(base64);
         
-        setLoadingStep(`IDENTIFICADO: ${result.make || 'VEHÍCULO'}`);
+        setLoadingStep(`VEHÍCULO DETECTADO: ${result.make}`);
         const specs = await getVehicleSpecs(result.make || "Desconocido", result.model || "Modelo", result.year || 2024);
         
         setState(prev => ({
           ...prev,
-          vin: result.vin || "VIN-DETECTADO-AI",
+          vin: result.vin || "VIN-EXTRACTED-AI",
           vehicleInfo: { 
             make: result.make || "Desconocido", 
             model: result.model || "Desconocido", 
@@ -43,7 +43,7 @@ const VinScanPage: React.FC = () => {
         }));
       } catch (err) {
         console.error("Error analizando VIN:", err);
-        alert("No se pudo leer el VIN. Por favor intenta de nuevo o ingresa los datos manuales.");
+        alert("Error de lectura. Por favor, asegúrate de que el VIN sea legible o ingresa los datos manualmente.");
       } finally {
         setLoading(false);
         setLoadingStep("");
@@ -56,12 +56,12 @@ const VinScanPage: React.FC = () => {
     if (!manualData.make || !manualData.model || !manualData.year) return;
 
     setLoading(true);
-    setLoadingStep("CONFIGURANDO FICHA TÉCNICA...");
+    setLoadingStep("BUSCANDO FICHA TÉCNICA...");
     try {
       const specs = await getVehicleSpecs(manualData.make, manualData.model, parseInt(manualData.year));
       setState(prev => ({
         ...prev,
-        vin: "MANUAL-ENTRY",
+        vin: "MANUAL-INPUT",
         vehicleInfo: { 
           make: manualData.make, 
           model: manualData.model, 
@@ -100,10 +100,8 @@ const VinScanPage: React.FC = () => {
                 className={`w-full aspect-square max-w-[300px] relative rounded-[3rem] overflow-hidden border-2 transition-all duration-700 ${loading ? 'border-primary shadow-[0_0_40px_rgba(19,127,236,0.4)]' : 'border-white/10'}`}
                 onClick={() => !loading && fileInputRef.current?.click()}
               >
-                {/* Fondo dinámico */}
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5"></div>
                 
-                {/* Cuadros de enfoque */}
                 <div className="absolute inset-10 border border-white/5 rounded-3xl flex flex-col items-center justify-center gap-4">
                   {!loading ? (
                     <>
@@ -123,16 +121,12 @@ const VinScanPage: React.FC = () => {
 
                 {/* Rayo Láser Animado */}
                 <div className={`absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_20px_rgba(19,127,236,1)] z-20 ${loading ? 'animate-[laser_2s_infinite_linear]' : 'top-1/2 opacity-20'}`}></div>
-                
-                {/* Decoración en esquinas */}
-                <div className="absolute top-6 left-6 size-6 border-t-2 border-l-2 border-primary opacity-50"></div>
-                <div className="absolute bottom-6 right-6 size-6 border-b-2 border-r-2 border-primary opacity-50"></div>
               </div>
 
               <div className="text-center space-y-3">
                 <h2 className="text-3xl font-black tracking-tighter">Escaneo Visual AI</h2>
                 <p className="text-sm text-slate-400 max-w-[260px] mx-auto leading-relaxed">
-                  Utiliza visión artificial para decodificar la historia de este vehículo.
+                  Decodifica la historia y especificaciones de cualquier vehículo mediante visión artificial.
                 </p>
               </div>
 
@@ -142,10 +136,10 @@ const VinScanPage: React.FC = () => {
                 <button 
                   disabled={loading}
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full bg-primary py-5 rounded-2xl font-black shadow-[0_20px_40px_rgba(19,127,236,0.2)] flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+                  className="w-full bg-primary py-5 rounded-2xl font-black shadow-2xl shadow-primary/20 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   <span className="material-symbols-outlined">camera_enhance</span> 
-                  {loading ? 'ANALIZANDO...' : 'ESCANEAR AHORA'}
+                  {loading ? 'ANALIZANDO...' : 'INICIAR CAPTURA'}
                 </button>
                 <button 
                   disabled={loading}
@@ -163,66 +157,41 @@ const VinScanPage: React.FC = () => {
                    <div className="size-12 bg-primary/10 rounded-2xl flex items-center justify-center">
                      <span className="material-symbols-outlined text-primary">edit_square</span>
                    </div>
-                   <div>
-                     <h2 className="text-2xl font-black">Registro Manual</h2>
-                     <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Protocolo de Emergencia</p>
-                   </div>
+                   <h2 className="text-2xl font-black">Registro Manual</h2>
                  </div>
                  
                  <div className="space-y-4">
                    <div className="bg-surface-dark p-4 rounded-2xl border border-white/5 focus-within:border-primary transition-colors">
                      <label className="text-[10px] font-black text-primary uppercase tracking-widest block mb-2">Marca</label>
-                     <input 
-                       placeholder="Ej. Porsche" 
-                       value={manualData.make} 
-                       onChange={e=>setManualData({...manualData, make:e.target.value})} 
-                       className="w-full bg-transparent border-none outline-none font-bold placeholder:opacity-20" 
-                     />
+                     <input placeholder="Ej. BMW" value={manualData.make} onChange={e=>setManualData({...manualData, make:e.target.value})} className="w-full bg-transparent border-none outline-none font-bold" />
                    </div>
                    <div className="bg-surface-dark p-4 rounded-2xl border border-white/5 focus-within:border-primary transition-colors">
                      <label className="text-[10px] font-black text-primary uppercase tracking-widest block mb-2">Modelo</label>
-                     <input 
-                       placeholder="Ej. Cayenne Turbo" 
-                       value={manualData.model} 
-                       onChange={e=>setManualData({...manualData, model:e.target.value})} 
-                       className="w-full bg-transparent border-none outline-none font-bold placeholder:opacity-20" 
-                     />
+                     <input placeholder="Ej. Serie 3" value={manualData.model} onChange={e=>setManualData({...manualData, model:e.target.value})} className="w-full bg-transparent border-none outline-none font-bold" />
                    </div>
                    <div className="bg-surface-dark p-4 rounded-2xl border border-white/5 focus-within:border-primary transition-colors">
                      <label className="text-[10px] font-black text-primary uppercase tracking-widest block mb-2">Año</label>
-                     <input 
-                       placeholder="2024" 
-                       type="number" 
-                       value={manualData.year} 
-                       onChange={e=>setManualData({...manualData, year:e.target.value})} 
-                       className="w-full bg-transparent border-none outline-none font-bold placeholder:opacity-20" 
-                     />
+                     <input placeholder="2023" type="number" value={manualData.year} onChange={e=>setManualData({...manualData, year:e.target.value})} className="w-full bg-transparent border-none outline-none font-bold" />
                    </div>
                  </div>
                </div>
                <button onClick={handleManualSubmit} className="w-full bg-primary py-5 rounded-2xl font-black shadow-xl active:scale-95 transition-all">
-                 VERIFICAR VEHÍCULO
+                 CONTINUAR PROTOCOLO
                </button>
-               <button onClick={() => setShowManual(false)} className="w-full text-[10px] text-slate-500 font-black uppercase tracking-widest">Regresar al Escáner</button>
+               <button onClick={() => setShowManual(false)} className="w-full text-[10px] text-slate-500 font-black uppercase tracking-widest">Volver al escáner</button>
             </div>
           )}
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-in zoom-in duration-500">
            <div className="w-full bg-surface-dark p-12 rounded-[3.5rem] border border-primary/20 text-center shadow-3xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-6 opacity-5">
-                <span className="material-symbols-outlined text-[120px]">verified</span>
-              </div>
-              
               <div className="size-24 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
-                <span className="material-symbols-outlined text-primary text-6xl">minor_crash</span>
+                <span className="material-symbols-outlined text-primary text-6xl">directions_car</span>
               </div>
-              
               <h3 className="text-4xl font-black mb-2 tracking-tighter">{state.vehicleInfo?.make}</h3>
               <p className="text-xl font-bold text-slate-400 mb-10">{state.vehicleInfo?.model} {state.vehicleInfo?.year}</p>
-              
               <div className="bg-background-dark p-5 rounded-2xl border border-white/5">
-                <p className="text-[8px] text-primary font-black uppercase tracking-[0.3em] mb-2">Certificación VIN AI</p>
+                <p className="text-[8px] text-primary font-black uppercase tracking-[0.3em] mb-2">VIN Certificado</p>
                 <span className="font-mono text-xs tracking-widest text-white/80">{state.vin}</span>
               </div>
            </div>
