@@ -1,106 +1,135 @@
 
-import React, { useState, createContext, useContext, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import { EvaluationState } from './types';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useApp } from '../App';
 
-// Pages
-import WelcomePage from './pages/WelcomePage';
-import HomePage from './pages/HomePage';
-import IntroPage from './pages/IntroPage';
-import VinScanPage from './pages/VinScanPage';
-import VisualInspectionPage from './pages/VisualInspectionPage';
-import GuidedInspectionPage from './pages/GuidedInspectionPage';
-import ObdConnectPage from './pages/ObdConnectPage';
-import ObdResultsPage from './pages/ObdResultsPage';
-import PreliminaryReportPage from './pages/PreliminaryReportPage';
-import FinalReportPage from './pages/FinalReportPage';
-import ListPage from './pages/ListPage';
+const VisualInspectionPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { state, setState } = useApp();
+  
+  // Obtenemos el paso actual del estado global para persistencia
+  const currentStep = state.currentPhotoStep || 0;
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const photosNeeded = [
+    "Frente del Auto", 
+    "Lado Derecho", 
+    "Parte Trasera", 
+    "Lado Izquierdo", 
+    "Neumáticos", 
+    "Tablero / Odómetro"
+  ];
 
-interface AppContextType {
-  state: EvaluationState;
-  setState: React.Dispatch<React.SetStateAction<EvaluationState>>;
-  resetState: () => void;
-}
-
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error("useApp must be used within an AppProvider");
-  return context;
-};
-
-// Cargar estado inicial desde LocalStorage si existe
-const getInitialState = (): EvaluationState => {
-  const saved = localStorage.getItem('autoscan_state');
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error cargando estado guardado", e);
-    }
-  }
-  return {
-    userName: localStorage.getItem('autoscan_user') || undefined,
-    vin: undefined,
-    currentPhotoStep: 0,
-    vehicleInfo: undefined,
-    exteriorPhotos: [],
-    obdCodes: [],
-    inspectionChat: [
-      { role: 'model', text: 'Hola, soy tu asistente de diagnóstico. ¿Observas alguna mancha de líquido o aceite debajo del motor?', timestamp: Date.now() }
-    ],
-    status: 'idle'
-  };
-};
-
-const App: React.FC = () => {
-  const [state, setState] = useState<EvaluationState>(getInitialState());
-
-  // Guardar estado automáticamente cada vez que cambie
+  // Si ya se completaron todas las fotos, navegar a la siguiente fase
   useEffect(() => {
-    localStorage.setItem('autoscan_state', JSON.stringify(state));
-    if (state.userName) {
-      localStorage.setItem('autoscan_user', state.userName);
+    if (currentStep >= photosNeeded.length) {
+      navigate('/guided-inspection');
     }
-  }, [state]);
+  }, [currentStep, navigate, photosNeeded.length]);
 
-  const resetState = () => {
-    const freshState: EvaluationState = {
-      userName: state.userName,
-      vin: undefined,
-      currentPhotoStep: 0,
-      vehicleInfo: undefined,
-      exteriorPhotos: [],
-      obdCodes: [],
-      inspectionChat: [
-        { role: 'model', text: 'Hola, soy tu asistente de diagnóstico.', timestamp: Date.now() }
-      ],
-      status: 'idle'
-    };
-    setState(freshState);
-    localStorage.removeItem('autoscan_state');
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const confirmPhoto = () => {
+    if (!previewUrl) return;
+
+    // Guardamos la foto y avanzamos el contador de pasos global
+    setState(prev => ({
+      ...prev,
+      exteriorPhotos: [...(prev.exteriorPhotos || []), previewUrl],
+      currentPhotoStep: (prev.currentPhotoStep || 0) + 1
+    }));
+
+    setPreviewUrl(null);
   };
 
   return (
-    <AppContext.Provider value={{ state, setState, resetState }}>
-      <Router>
-        <Routes>
-          <Route path="/" element={state.userName ? <HomePage /> : <WelcomePage />} />
-          <Route path="/welcome" element={<WelcomePage />} />
-          <Route path="/intro" element={<IntroPage />} />
-          <Route path="/scan-vin" element={<VinScanPage />} />
-          <Route path="/visual-inspection" element={<VisualInspectionPage />} />
-          <Route path="/guided-inspection" element={<GuidedInspectionPage />} />
-          <Route path="/obd-connect" element={<ObdConnectPage />} />
-          <Route path="/obd-results" element={<ObdResultsPage />} />
-          <Route path="/preliminary-report" element={<PreliminaryReportPage />} />
-          <Route path="/final-report" element={<FinalReportPage />} />
-          <Route path="/list" element={<ListPage />} />
-        </Routes>
-      </Router>
-    </AppContext.Provider>
+    <div className="relative h-screen bg-black text-white flex flex-col overflow-hidden">
+      <input 
+        type="file" 
+        accept="image/*" 
+        capture="environment" 
+        className="hidden" 
+        ref={fileInputRef} 
+        onChange={handleFileChange}
+      />
+
+      <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
+        {previewUrl ? (
+          <img src={previewUrl} className="w-full h-full object-cover animate-in fade-in zoom-in duration-300" alt="Preview" />
+        ) : (
+          <div className="text-center opacity-20">
+            <span className="material-symbols-outlined text-9xl">photo_camera</span>
+            <p className="text-xs font-black uppercase tracking-widest mt-4">Esperando captura...</p>
+          </div>
+        )}
+      </div>
+      
+      <header className="relative z-50 p-6 pt-12 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent">
+        <button 
+          onClick={() => navigate('/scan-vin')} 
+          className="size-11 bg-white/10 rounded-xl flex items-center justify-center border border-white/10 backdrop-blur-md"
+        >
+          <span className="material-symbols-outlined">close</span>
+        </button>
+        <div className="text-center">
+          <p className="text-[10px] uppercase font-black text-primary tracking-widest mb-1">Paso {currentStep + 1} de {photosNeeded.length}</p>
+          <h2 className="text-lg font-black tracking-tight">{photosNeeded[currentStep]}</h2>
+        </div>
+        <div className="w-11"></div>
+      </header>
+
+      <div className="mt-auto relative z-50 p-8 pb-12 bg-gradient-to-t from-black via-black/90 to-transparent">
+        {!previewUrl ? (
+          <div className="flex flex-col items-center gap-6">
+            <div className="flex w-full gap-1 mb-2">
+              {photosNeeded.map((_, i) => (
+                <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= currentStep ? 'bg-primary shadow-[0_0_8px_rgba(19,127,236,0.5)]' : 'bg-white/20'}`}></div>
+              ))}
+            </div>
+            <p className="text-sm text-slate-400 text-center max-w-[250px]">
+              Toma una foto del <span className="text-white font-bold">{photosNeeded[currentStep].toLowerCase()}</span>.
+            </p>
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              className="size-20 rounded-full border-4 border-white/30 p-1 active:scale-90 transition-transform"
+            >
+              <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                <span className="material-symbols-outlined text-black text-3xl">camera</span>
+              </div>
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-8">
+            <p className="text-center text-xs font-bold text-primary uppercase mb-2 tracking-widest">¿Es aceptable esta foto?</p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setPreviewUrl(null)} 
+                className="flex-1 bg-white/10 py-5 rounded-2xl font-bold border border-white/10 flex items-center justify-center gap-2 backdrop-blur-md"
+              >
+                REPETIR
+              </button>
+              <button 
+                onClick={confirmPhoto} 
+                className="flex-[2] bg-primary py-5 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-2"
+              >
+                ACEPTAR <span className="material-symbols-outlined">check_circle</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
-export default App;
+export default VisualInspectionPage;
