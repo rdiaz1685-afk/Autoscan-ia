@@ -1,121 +1,167 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { Message } from "../types";
+import React, { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useApp } from '../App';
+import { analyzeVIN, getVehicleSpecs } from '../services/geminiService';
 
-/**
- * Función auxiliar para obtener una instancia fresca de la IA.
- * Esto asegura que siempre use la API_KEY disponible en process.env.
- */
-const getAIInstance = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY_MISSING");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+const VinScanPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { state, setState } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState("");
+  const [showManual, setShowManual] = useState(false);
+  const [manualData, setManualData] = useState({ make: '', model: '', year: '' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-export const analyzeVIN = async (imageBase64: string, mimeType: string = "image/jpeg") => {
-  const ai = getAIInstance();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      {
-        parts: [
-          { inlineData: { data: imageBase64, mimeType: mimeType } },
-          { text: "Analiza el VIN y datos del vehículo en esta imagen. Responde estrictamente en JSON." }
-        ]
+  const processImage = async (file: File) => {
+    setLoading(true);
+    setLoadingStep("PROCESANDO ARCHIVO...");
+    const mimeType = file.type || "image/jpeg";
+    
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(',')[1];
+        setLoadingStep("CONECTANDO CON IA...");
+        const result = await analyzeVIN(base64, mimeType);
+        
+        if (!result || !result.make) throw new Error("LOW_CONFIDENCE");
+
+        setLoadingStep(`VEHÍCULO: ${result.make}`);
+        const specs = await getVehicleSpecs(result.make, result.model || "Modelo", result.year || 2024);
+        
+        setState(prev => ({
+          ...prev,
+          vin: result.vin || "EXTRACTED-VIN",
+          vehicleInfo: { 
+            make: result.make, 
+            model: result.model || "Desconocido", 
+            year: result.year || 2024, 
+            color: result.color || "Detectado" 
+          },
+          vehicleSpecs: specs
+        }));
+      } catch (err: any) {
+        console.error("Scan Error:", err);
+        alert("Error de lectura. Por favor, asegúrate de que el VIN sea legible o ingresa los datos manualmente.");
+      } finally {
+        setLoading(false);
+        setLoadingStep("");
       }
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          vin: { type: Type.STRING },
-          make: { type: Type.STRING },
-          model: { type: Type.STRING },
-          year: { type: Type.NUMBER },
-          color: { type: Type.STRING }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processImage(file);
+  };
+
+  const handleManual = async () => {
+    if (!manualData.make || !manualData.model || !manualData.year) return;
+    setLoading(true);
+    try {
+      const specs = await getVehicleSpecs(manualData.make, manualData.model, parseInt(manualData.year));
+      setState(prev => ({
+        ...prev,
+        vin: "MANUAL-REG",
+        vehicleInfo: { 
+          make: manualData.make, 
+          model: manualData.model, 
+          year: parseInt(manualData.year), 
+          color: "N/A" 
         },
-        required: ["vin", "make", "model", "year"]
-      }
+        vehicleSpecs: specs
+      }));
+    } catch (e) {
+      alert("Error al cargar especificaciones.");
+    } finally {
+      setLoading(false);
     }
-  });
-  return JSON.parse(response.text || "{}");
+  };
+
+  return (
+    <div className="relative min-h-screen flex flex-col bg-[#101922] text-white p-6">
+      <header className="flex justify-between items-center mb-8">
+        <button onClick={() => navigate('/intro')} className="size-10 flex items-center justify-center bg-white/5 rounded-xl border border-white/10">
+          <span className="material-symbols-outlined text-primary">arrow_back</span>
+        </button>
+        <h1 className="text-[10px] font-black text-primary uppercase tracking-widest">Módulo Identidad</h1>
+        <div className="w-10"></div>
+      </header>
+
+      {!state.vin ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-10">
+          {!showManual ? (
+            <>
+              <div 
+                className={`w-full aspect-square max-w-[280px] relative rounded-[2.5rem] border-2 flex flex-col items-center justify-center gap-4 transition-all ${loading ? 'border-primary shadow-2xl' : 'border-white/10'}`}
+                onClick={() => !loading && fileInputRef.current?.click()}
+              >
+                {!loading ? (
+                  <>
+                    <span className="material-symbols-outlined text-7xl text-white/10">qr_code_scanner</span>
+                    <p className="text-[9px] font-bold text-slate-500 uppercase text-center px-4">Escanear VIN o Tarjeta</p>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="size-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-black text-primary animate-pulse">{loadingStep}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center">
+                <h2 className="text-3xl font-black mb-2 tracking-tighter">Escaneo Visual AI</h2>
+                <p className="text-sm text-slate-400">Decodifica la historia y especificaciones de cualquier vehículo mediante visión artificial.</p>
+              </div>
+
+              <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={onFileChange} />
+              
+              <div className="w-full space-y-4">
+                <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="w-full bg-primary py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl">
+                  <span className="material-symbols-outlined">camera_enhance</span> 
+                  {loading ? 'ANALIZANDO...' : 'CAPTURAR'}
+                </button>
+                <button onClick={() => setShowManual(true)} className="w-full text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ingreso Manual</button>
+              </div>
+            </>
+          ) : (
+            <div className="w-full space-y-6">
+               <h2 className="text-2xl font-black text-center">Registro Manual</h2>
+               <div className="space-y-4">
+                 {['make', 'model', 'year'].map(f => (
+                   <div key={f} className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                     <label className="text-[10px] font-black text-primary uppercase block mb-1">{f}</label>
+                     <input 
+                       value={(manualData as any)[f]} 
+                       onChange={e => setManualData({...manualData, [f]: e.target.value})}
+                       className="w-full bg-transparent outline-none font-bold capitalize" 
+                       placeholder={`Ej. ${f === 'year' ? '2022' : 'Toyota'}`}
+                     />
+                   </div>
+                 ))}
+               </div>
+               <button onClick={handleManual} className="w-full bg-primary py-5 rounded-2xl font-black">CONTINUAR</button>
+               <button onClick={() => setShowManual(false)} className="w-full text-[10px] text-slate-500 uppercase text-center font-bold">Volver al escáner</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center gap-8 animate-in fade-in duration-500">
+           <div className="w-full bg-white/5 p-10 rounded-[3rem] border border-primary/20 text-center shadow-2xl">
+              <span className="material-symbols-outlined text-primary text-6xl mb-4">verified</span>
+              <h3 className="text-3xl font-black mb-1">{state.vehicleInfo?.make}</h3>
+              <p className="text-slate-400 font-bold mb-6">{state.vehicleInfo?.model} {state.vehicleInfo?.year}</p>
+              <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] tracking-widest">{state.vin}</div>
+           </div>
+           <button onClick={() => navigate('/visual-inspection')} className="w-full bg-primary py-5 rounded-2xl font-black flex items-center justify-center gap-2">
+             SIGUIENTE PASO <span className="material-symbols-outlined">arrow_forward</span>
+           </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
-export const getVehicleSpecs = async (make: string, model: string, year: number) => {
-  const ai = getAIInstance();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Ficha técnica detallada para ${year} ${make} ${model} en JSON.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          engine: { type: Type.STRING },
-          horsepower: { type: Type.STRING },
-          torque: { type: Type.STRING },
-          transmission: { type: Type.STRING },
-          driveType: { type: Type.STRING },
-          fuelEconomy: { type: Type.STRING },
-          curiosities: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
-      }
-    }
-  });
-  return JSON.parse(response.text || "{}");
-};
-
-export const generateFinalReport = async (data: any) => {
-  const ai = getAIInstance();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Genera un reporte pericial automotriz en Markdown para: ${JSON.stringify(data)}`,
-    config: {
-      thinkingConfig: { thinkingBudget: 4000 }
-    }
-  });
-  return response.text;
-};
-
-export const chatInspector = async (history: Message[], userInput: string, vehicleInfo: any) => {
-  const ai = getAIInstance();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      ...history.map(m => ({ role: m.role, parts: [{ text: m.text }] })),
-      { role: "user", parts: [{ text: userInput }] }
-    ],
-    config: {
-      systemInstruction: `Eres AutoScan AI. Estás inspeccionando un ${vehicleInfo?.year} ${vehicleInfo?.make}.`
-    }
-  });
-  return response.text;
-};
-
-export const analyzeOBDCodes = async (codes: string[]) => {
-  const ai = getAIInstance();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Analiza códigos OBD: ${codes.join(",")}. Responde en JSON.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            code: { type: Type.STRING },
-            title: { type: Type.STRING },
-            severity: { type: Type.STRING },
-            cause: { type: Type.STRING },
-            recommendation: { type: Type.STRING }
-          }
-        }
-      }
-    }
-  });
-  return JSON.parse(response.text || "[]");
-};
+export default VinScanPage;
