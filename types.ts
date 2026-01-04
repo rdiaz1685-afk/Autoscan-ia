@@ -2,6 +2,7 @@
 export interface EvaluationState {
   userName?: string;
   vin?: string;
+  currentPhotoStep?: number; // Para no perder el progreso si la cámara reinicia la app
   vehicleInfo?: {
     make: string;
     model: string;
@@ -19,7 +20,7 @@ export interface EvaluationState {
   };
   legalStatus?: {
     invoiceType?: 'Original' | 'Empresa' | 'Aseguradora' | 'Otro';
-    unpaidTaxes?: boolean; // Refrendos/Tenencias
+    unpaidTaxes?: boolean;
     hasFines?: boolean;
     verificationHologram?: string;
   };
