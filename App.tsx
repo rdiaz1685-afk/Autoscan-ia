@@ -1,5 +1,5 @@
 
-import React, { useState, createContext, useContext } from 'react';
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { EvaluationState } from './types';
 
@@ -30,21 +30,57 @@ export const useApp = () => {
   return context;
 };
 
-const INITIAL_STATE: EvaluationState = {
-  userName: localStorage.getItem('autoscan_user') || undefined,
-  vin: undefined,
-  vehicleInfo: undefined,
-  exteriorPhotos: [],
-  obdCodes: [],
-  inspectionChat: [
-    { role: 'model', text: 'Hola, soy tu asistente de diagnóstico. ¿Observas alguna mancha de líquido o aceite debajo del motor?', timestamp: Date.now() }
-  ],
-  status: 'idle'
+// Cargar estado inicial desde LocalStorage si existe
+const getInitialState = (): EvaluationState => {
+  const saved = localStorage.getItem('autoscan_state');
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error cargando estado guardado", e);
+    }
+  }
+  return {
+    userName: localStorage.getItem('autoscan_user') || undefined,
+    vin: undefined,
+    currentPhotoStep: 0,
+    vehicleInfo: undefined,
+    exteriorPhotos: [],
+    obdCodes: [],
+    inspectionChat: [
+      { role: 'model', text: 'Hola, soy tu asistente de diagnóstico. ¿Observas alguna mancha de líquido o aceite debajo del motor?', timestamp: Date.now() }
+    ],
+    status: 'idle'
+  };
 };
 
 const App: React.FC = () => {
-  const [state, setState] = useState<EvaluationState>(INITIAL_STATE);
-  const resetState = () => setState(INITIAL_STATE);
+  const [state, setState] = useState<EvaluationState>(getInitialState());
+
+  // Guardar estado automáticamente cada vez que cambie
+  useEffect(() => {
+    localStorage.setItem('autoscan_state', JSON.stringify(state));
+    if (state.userName) {
+      localStorage.setItem('autoscan_user', state.userName);
+    }
+  }, [state]);
+
+  const resetState = () => {
+    const freshState: EvaluationState = {
+      userName: state.userName,
+      vin: undefined,
+      currentPhotoStep: 0,
+      vehicleInfo: undefined,
+      exteriorPhotos: [],
+      obdCodes: [],
+      inspectionChat: [
+        { role: 'model', text: 'Hola, soy tu asistente de diagnóstico.', timestamp: Date.now() }
+      ],
+      status: 'idle'
+    };
+    setState(freshState);
+    localStorage.removeItem('autoscan_state');
+  };
 
   return (
     <AppContext.Provider value={{ state, setState, resetState }}>

@@ -1,172 +1,106 @@
 
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useApp } from '../App';
-import { analyzeVIN, getVehicleSpecs } from '../services/geminiService';
+import React, { useState, createContext, useContext, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { EvaluationState } from './types';
 
-const VinScanPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { state, setState } = useApp();
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState("");
-  const [showManual, setShowManual] = useState(false);
-  const [manualData, setManualData] = useState({ make: '', model: '', year: '' });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+// Pages
+import WelcomePage from './pages/WelcomePage';
+import HomePage from './pages/HomePage';
+import IntroPage from './pages/IntroPage';
+import VinScanPage from './pages/VinScanPage';
+import VisualInspectionPage from './pages/VisualInspectionPage';
+import GuidedInspectionPage from './pages/GuidedInspectionPage';
+import ObdConnectPage from './pages/ObdConnectPage';
+import ObdResultsPage from './pages/ObdResultsPage';
+import PreliminaryReportPage from './pages/PreliminaryReportPage';
+import FinalReportPage from './pages/FinalReportPage';
+import ListPage from './pages/ListPage';
 
-  const processImage = async (file: File) => {
-    setLoading(true);
-    setLoadingStep("PROCESANDO ARCHIVO...");
-    const mimeType = file.type || "image/jpeg";
-    
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64 = (reader.result as string).split(',')[1];
-        setLoadingStep("CONECTANDO CON IA...");
-        
-        const result = await analyzeVIN(base64, mimeType);
-        
-        if (!result || !result.make) {
-          throw new Error("No se pudo identificar la marca del vehículo en la imagen.");
-        }
+interface AppContextType {
+  state: EvaluationState;
+  setState: React.Dispatch<React.SetStateAction<EvaluationState>>;
+  resetState: () => void;
+}
 
-        setLoadingStep(`VEHÍCULO DETECTADO: ${result.make}`);
-        const specs = await getVehicleSpecs(result.make, result.model || "Modelo", result.year || 2024);
-        
-        setState(prev => ({
-          ...prev,
-          vin: result.vin || "VIN-NO-DETECTADO",
-          vehicleInfo: { 
-            make: result.make, 
-            model: result.model || "Desconocido", 
-            year: result.year || 2024, 
-            color: result.color || "N/A" 
-          },
-          vehicleSpecs: specs
-        }));
-      } catch (err: any) {
-        console.error("Scan Error Details:", err);
-        const errorMsg = err.message || "Error desconocido";
-        alert(`Error en Escaneo: ${errorMsg}\n\nIntenta con una foto más clara o ingresa los datos manualmente.`);
-      } finally {
-        setLoading(false);
-        setLoadingStep("");
-      }
-    };
-    reader.onerror = () => alert("Error al leer el archivo de imagen.");
-    reader.readAsDataURL(file);
-  };
+const AppContext = createContext<AppContextType | undefined>(undefined);
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processImage(file);
-  };
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error("useApp must be used within an AppProvider");
+  return context;
+};
 
-  const handleManual = async () => {
-    if (!manualData.make || !manualData.model || !manualData.year) return;
-    setLoading(true);
+// Cargar estado inicial desde LocalStorage si existe
+const getInitialState = (): EvaluationState => {
+  const saved = localStorage.getItem('autoscan_state');
+  if (saved) {
     try {
-      const specs = await getVehicleSpecs(manualData.make, manualData.model, parseInt(manualData.year));
-      setState(prev => ({
-        ...prev,
-        vin: "MANUAL-REG",
-        vehicleInfo: { 
-          make: manualData.make, 
-          model: manualData.model, 
-          year: parseInt(manualData.year), 
-          color: "N/A" 
-        },
-        vehicleSpecs: specs
-      }));
+      return JSON.parse(saved);
     } catch (e) {
-      alert("Error al cargar especificaciones manuales.");
-    } finally {
-      setLoading(false);
+      console.error("Error cargando estado guardado", e);
     }
+  }
+  return {
+    userName: localStorage.getItem('autoscan_user') || undefined,
+    vin: undefined,
+    currentPhotoStep: 0,
+    vehicleInfo: undefined,
+    exteriorPhotos: [],
+    obdCodes: [],
+    inspectionChat: [
+      { role: 'model', text: 'Hola, soy tu asistente de diagnóstico. ¿Observas alguna mancha de líquido o aceite debajo del motor?', timestamp: Date.now() }
+    ],
+    status: 'idle'
+  };
+};
+
+const App: React.FC = () => {
+  const [state, setState] = useState<EvaluationState>(getInitialState());
+
+  // Guardar estado automáticamente cada vez que cambie
+  useEffect(() => {
+    localStorage.setItem('autoscan_state', JSON.stringify(state));
+    if (state.userName) {
+      localStorage.setItem('autoscan_user', state.userName);
+    }
+  }, [state]);
+
+  const resetState = () => {
+    const freshState: EvaluationState = {
+      userName: state.userName,
+      vin: undefined,
+      currentPhotoStep: 0,
+      vehicleInfo: undefined,
+      exteriorPhotos: [],
+      obdCodes: [],
+      inspectionChat: [
+        { role: 'model', text: 'Hola, soy tu asistente de diagnóstico.', timestamp: Date.now() }
+      ],
+      status: 'idle'
+    };
+    setState(freshState);
+    localStorage.removeItem('autoscan_state');
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-[#101922] text-white p-6">
-      <header className="flex justify-between items-center mb-8">
-        <button onClick={() => navigate('/intro')} className="size-10 flex items-center justify-center bg-white/5 rounded-xl border border-white/10">
-          <span className="material-symbols-outlined text-primary">arrow_back</span>
-        </button>
-        <h1 className="text-[10px] font-black text-primary uppercase tracking-widest">Módulo Identidad</h1>
-        <div className="w-10"></div>
-      </header>
-
-      {!state.vin ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-10">
-          {!showManual ? (
-            <>
-              <div 
-                className={`w-full aspect-square max-w-[280px] relative rounded-[2.5rem] border-2 flex flex-col items-center justify-center gap-4 transition-all ${loading ? 'border-primary shadow-2xl' : 'border-white/10'}`}
-                onClick={() => !loading && fileInputRef.current?.click()}
-              >
-                {!loading ? (
-                  <>
-                    <span className="material-symbols-outlined text-7xl text-white/10">qr_code_scanner</span>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase text-center px-4">Escanear VIN o Placa</p>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="size-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-[10px] font-black text-primary animate-pulse text-center px-4">{loadingStep}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center">
-                <h2 className="text-3xl font-black mb-2 tracking-tighter">Escaneo Visual AI</h2>
-                <p className="text-sm text-slate-400">Captura el VIN en el tablero o la tarjeta de circulación.</p>
-              </div>
-
-              <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileInputRef} onChange={onFileChange} />
-              
-              <div className="w-full space-y-4">
-                <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="w-full bg-primary py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl">
-                  <span className="material-symbols-outlined">camera_enhance</span> 
-                  {loading ? 'ANALIZANDO...' : 'CAPTURAR'}
-                </button>
-                <button onClick={() => setShowManual(true)} className="w-full text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ingreso Manual</button>
-              </div>
-            </>
-          ) : (
-            <div className="w-full space-y-6">
-               <h2 className="text-2xl font-black text-center">Registro Manual</h2>
-               <div className="space-y-4">
-                 {['make', 'model', 'year'].map(f => (
-                   <div key={f} className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                     <label className="text-[10px] font-black text-primary uppercase block mb-1">{f}</label>
-                     <input 
-                       value={(manualData as any)[f]} 
-                       onChange={e => setManualData({...manualData, [f]: e.target.value})}
-                       className="w-full bg-transparent outline-none font-bold capitalize" 
-                       placeholder={`Ej. ${f === 'year' ? '2022' : 'Toyota'}`}
-                     />
-                   </div>
-                 ))}
-               </div>
-               <button onClick={handleManual} className="w-full bg-primary py-5 rounded-2xl font-black">CONTINUAR</button>
-               <button onClick={() => setShowManual(false)} className="w-full text-[10px] text-slate-500 uppercase text-center font-bold">Volver al escáner</button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-8 animate-in fade-in duration-500">
-           <div className="w-full bg-white/5 p-10 rounded-[3rem] border border-primary/20 text-center shadow-2xl">
-              <span className="material-symbols-outlined text-primary text-6xl mb-4">verified</span>
-              <h3 className="text-3xl font-black mb-1">{state.vehicleInfo?.make}</h3>
-              <p className="text-slate-400 font-bold mb-6">{state.vehicleInfo?.model} {state.vehicleInfo?.year}</p>
-              <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] tracking-widest uppercase">{state.vin}</div>
-           </div>
-           <button onClick={() => navigate('/visual-inspection')} className="w-full bg-primary py-5 rounded-2xl font-black flex items-center justify-center gap-2">
-             SIGUIENTE PASO <span className="material-symbols-outlined">arrow_forward</span>
-           </button>
-        </div>
-      )}
-    </div>
+    <AppContext.Provider value={{ state, setState, resetState }}>
+      <Router>
+        <Routes>
+          <Route path="/" element={state.userName ? <HomePage /> : <WelcomePage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/intro" element={<IntroPage />} />
+          <Route path="/scan-vin" element={<VinScanPage />} />
+          <Route path="/visual-inspection" element={<VisualInspectionPage />} />
+          <Route path="/guided-inspection" element={<GuidedInspectionPage />} />
+          <Route path="/obd-connect" element={<ObdConnectPage />} />
+          <Route path="/obd-results" element={<ObdResultsPage />} />
+          <Route path="/preliminary-report" element={<PreliminaryReportPage />} />
+          <Route path="/final-report" element={<FinalReportPage />} />
+          <Route path="/list" element={<ListPage />} />
+        </Routes>
+      </Router>
+    </AppContext.Provider>
   );
 };
 
-export default VinScanPage;
+export default App;

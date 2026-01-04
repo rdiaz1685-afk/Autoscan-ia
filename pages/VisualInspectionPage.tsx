@@ -1,161 +1,106 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useApp } from '../App';
+import React, { useState, createContext, useContext, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { EvaluationState } from './types';
 
-const VisualInspectionPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { state, setState } = useApp();
-  
-  // Usamos el estado global para el paso actual, o empezamos en 0
-  const currentStep = state.currentPhotoStep || 0;
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const photosNeeded = [
-    "Frente del Auto", 
-    "Lado Derecho", 
-    "Parte Trasera", 
-    "Lado Izquierdo", 
-    "Neumáticos", 
-    "Interior / Tablero"
-  ];
+// Pages
+import WelcomePage from './pages/WelcomePage';
+import HomePage from './pages/HomePage';
+import IntroPage from './pages/IntroPage';
+import VinScanPage from './pages/VinScanPage';
+import VisualInspectionPage from './pages/VisualInspectionPage';
+import GuidedInspectionPage from './pages/GuidedInspectionPage';
+import ObdConnectPage from './pages/ObdConnectPage';
+import ObdResultsPage from './pages/ObdResultsPage';
+import PreliminaryReportPage from './pages/PreliminaryReportPage';
+import FinalReportPage from './pages/FinalReportPage';
+import ListPage from './pages/ListPage';
 
-  // Si ya terminamos las fotos, redirigir
+interface AppContextType {
+  state: EvaluationState;
+  setState: React.Dispatch<React.SetStateAction<EvaluationState>>;
+  resetState: () => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error("useApp must be used within an AppProvider");
+  return context;
+};
+
+// Cargar estado inicial desde LocalStorage si existe
+const getInitialState = (): EvaluationState => {
+  const saved = localStorage.getItem('autoscan_state');
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error cargando estado guardado", e);
+    }
+  }
+  return {
+    userName: localStorage.getItem('autoscan_user') || undefined,
+    vin: undefined,
+    currentPhotoStep: 0,
+    vehicleInfo: undefined,
+    exteriorPhotos: [],
+    obdCodes: [],
+    inspectionChat: [
+      { role: 'model', text: 'Hola, soy tu asistente de diagnóstico. ¿Observas alguna mancha de líquido o aceite debajo del motor?', timestamp: Date.now() }
+    ],
+    status: 'idle'
+  };
+};
+
+const App: React.FC = () => {
+  const [state, setState] = useState<EvaluationState>(getInitialState());
+
+  // Guardar estado automáticamente cada vez que cambie
   useEffect(() => {
-    if (currentStep >= photosNeeded.length) {
-      navigate('/guided-inspection');
+    localStorage.setItem('autoscan_state', JSON.stringify(state));
+    if (state.userName) {
+      localStorage.setItem('autoscan_user', state.userName);
     }
-  }, [currentStep]);
+  }, [state]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setPreviewUrl(reader.result as string);
-        setIsCapturing(true);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const confirmPhoto = () => {
-    if (!previewUrl) return;
-
-    // Guardamos la foto y avanzamos el paso en el estado global
-    setState(prev => ({
-      ...prev,
-      exteriorPhotos: [...prev.exteriorPhotos, previewUrl],
-      currentPhotoStep: currentStep + 1
-    }));
-
-    setPreviewUrl(null);
-    setIsCapturing(false);
-
-    // Si era la última foto, vamos a la siguiente página
-    if (currentStep === photosNeeded.length - 1) {
-      setState(prev => ({ ...prev, status: 'inspecting' }));
-      navigate('/guided-inspection');
-    }
-  };
-
-  const retakePhoto = () => {
-    setPreviewUrl(null);
-    setIsCapturing(false);
-    fileInputRef.current?.click();
+  const resetState = () => {
+    const freshState: EvaluationState = {
+      userName: state.userName,
+      vin: undefined,
+      currentPhotoStep: 0,
+      vehicleInfo: undefined,
+      exteriorPhotos: [],
+      obdCodes: [],
+      inspectionChat: [
+        { role: 'model', text: 'Hola, soy tu asistente de diagnóstico.', timestamp: Date.now() }
+      ],
+      status: 'idle'
+    };
+    setState(freshState);
+    localStorage.removeItem('autoscan_state');
   };
 
   return (
-    <div className="relative h-screen bg-[#0a0f14] text-white flex flex-col overflow-hidden">
-      <input 
-        type="file" 
-        accept="image/*" 
-        capture="environment" 
-        className="hidden" 
-        ref={fileInputRef} 
-        onChange={handleFileChange}
-      />
-
-      {/* Visor de Cámara / Previsualización */}
-      <div className="absolute inset-0 flex items-center justify-center bg-black">
-        {previewUrl ? (
-          <img src={previewUrl} className="w-full h-full object-cover animate-in fade-in zoom-in duration-300" alt="Preview" />
-        ) : (
-          <div className="text-center space-y-4 opacity-30">
-            <span className="material-symbols-outlined text-8xl">photo_camera</span>
-            <p className="text-xs font-bold uppercase tracking-widest">Listo para capturar</p>
-          </div>
-        )}
-        
-        {/* Guías visuales (solo si no hay preview) */}
-        {!previewUrl && (
-          <div className="absolute inset-10 border border-white/20 rounded-3xl pointer-events-none">
-            <div className="absolute top-0 left-0 size-10 border-t-2 border-l-2 border-primary/50 rounded-tl-3xl"></div>
-            <div className="absolute bottom-0 right-0 size-10 border-b-2 border-r-2 border-primary/50 rounded-br-3xl"></div>
-          </div>
-        )}
-      </div>
-      
-      {/* Header */}
-      <header className="relative z-50 p-6 pt-12 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent">
-        <button 
-          onClick={() => navigate('/scan-vin')} 
-          className="size-11 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/10"
-        >
-          <span className="material-symbols-outlined">close</span>
-        </button>
-        <div className="text-center">
-          <p className="text-[10px] uppercase font-black text-primary tracking-[0.2em] mb-1">Paso {currentStep + 1} de {photosNeeded.length}</p>
-          <h2 className="text-lg font-black tracking-tight">{photosNeeded[currentStep]}</h2>
-        </div>
-        <div className="w-11"></div>
-      </header>
-
-      {/* Footer / Controles */}
-      <div className="mt-auto relative z-50 p-8 pb-12 bg-gradient-to-t from-black via-black/80 to-transparent">
-        {!isCapturing ? (
-          <div className="flex flex-col items-center gap-6">
-            <div className="flex w-full gap-1 mb-2">
-              {photosNeeded.map((_, i) => (
-                <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= currentStep ? 'bg-primary shadow-[0_0_10px_rgba(19,127,236,0.8)]' : 'bg-white/20'}`}></div>
-              ))}
-            </div>
-            <p className="text-sm text-slate-400 text-center max-w-[250px]">
-              Toma una foto clara del <span className="text-white font-bold">{photosNeeded[currentStep].toLowerCase()}</span>. No tiene que ser perfecta.
-            </p>
-            <button 
-              onClick={() => fileInputRef.current?.click()} 
-              className="size-24 rounded-full border-[6px] border-white/20 flex items-center justify-center active:scale-90 transition-transform"
-            >
-              <div className="size-18 rounded-full bg-white flex items-center justify-center shadow-2xl">
-                <span className="material-symbols-outlined text-black text-4xl">camera_alt</span>
-              </div>
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-10 duration-300">
-            <p className="text-center text-xs font-bold text-primary uppercase tracking-widest mb-2">¿La foto es aceptable?</p>
-            <div className="flex gap-4">
-              <button 
-                onClick={retakePhoto} 
-                className="flex-1 bg-white/10 backdrop-blur-md py-5 rounded-2xl font-bold border border-white/10 flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-sm">refresh</span> REPETIR
-              </button>
-              <button 
-                onClick={confirmPhoto} 
-                className="flex-[2] bg-primary py-5 rounded-2xl font-black shadow-2xl shadow-primary/40 flex items-center justify-center gap-2"
-              >
-                ACEPTAR <span className="material-symbols-outlined">check_circle</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+    <AppContext.Provider value={{ state, setState, resetState }}>
+      <Router>
+        <Routes>
+          <Route path="/" element={state.userName ? <HomePage /> : <WelcomePage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/intro" element={<IntroPage />} />
+          <Route path="/scan-vin" element={<VinScanPage />} />
+          <Route path="/visual-inspection" element={<VisualInspectionPage />} />
+          <Route path="/guided-inspection" element={<GuidedInspectionPage />} />
+          <Route path="/obd-connect" element={<ObdConnectPage />} />
+          <Route path="/obd-results" element={<ObdResultsPage />} />
+          <Route path="/preliminary-report" element={<PreliminaryReportPage />} />
+          <Route path="/final-report" element={<FinalReportPage />} />
+          <Route path="/list" element={<ListPage />} />
+        </Routes>
+      </Router>
+    </AppContext.Provider>
   );
 };
 
-export default VisualInspectionPage;
+export default App;
